@@ -109,10 +109,9 @@ int solve_lp(ConstraintVector const& gts, ConstraintVector const& lts,
   }
   
   int res( solve( lp ) );
-  REAL variables[get_Ncolumns( lp )];
-  get_variables( lp, variables );
-  size_t n = sizeof(variables) / sizeof(variables[0]);
-  sol.insert(sol.begin(), variables, variables+n);
+  std::vector<REAL> variables(get_Ncolumns( lp ), 0);
+  get_variables( lp, variables.data() );
+  sol.insert(sol.begin(), variables.begin(), variables.end());
   
   delete_lp( lp );
   return res;
