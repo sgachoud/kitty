@@ -33,9 +33,6 @@
 #pragma once
 
 #include <vector>
-#include <array>
-#include <fstream>
-#include <cstring>
 #include <lpsolve/lp_lib.h> /* uncomment this line to include lp_solve */
 #include "traits.hpp"
 #include "isop.hpp"
