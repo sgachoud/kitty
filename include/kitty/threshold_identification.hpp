@@ -56,7 +56,7 @@ int solve_lp(ConstraintVector const& gts, ConstraintVector const& lts,
   set_verbose( lp, 0 );
   
   // length of rows
-  size_t len = num_vars + 2;
+  const size_t len = num_vars + 2;
   
   // Set objective
   REAL row[len];
