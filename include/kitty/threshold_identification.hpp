@@ -35,6 +35,7 @@
 #include <vector>
 #include <iostream>
 #include <fstream>
+#include <cstring>
 #include <lpsolve/lp_lib.h> /* uncomment this line to include lp_solve */
 #include "traits.hpp"
 #include "isop.hpp"
@@ -46,111 +47,78 @@ namespace kitty
   
   typedef std::vector<std::vector<uint8_t>> ConstraintVector;
 
-void print_lp( ConstraintVector const& gts, ConstraintVector const& lts,
-              uint8_t num_vars, std::ostream& os = std::cout )
+int solve_lp(ConstraintVector const& gts, ConstraintVector const& lts,
+                 uint8_t num_vars, std::vector<int64_t>& sol)
 {
-  /* the objective function */
-  os << "min:";
-  for ( uint8_t i( 0 ); i < num_vars; ++i )
+  lprec *lp( make_lp( 0, num_vars + 1 ) );
+  
+  // removes verbose
+  set_verbose( lp, 0 );
+  
+  // length of rows
+  size_t len = num_vars + 2;
+  
+  // Set objective
+  REAL row[len];
+  memset( row, 0, len * sizeof( REAL ) );
+  for( uint8_t i( 0 ); i <= num_vars; ++i )
   {
-    os << " + w" << int(i);
+    row[i] = 1.0;
   }
-  os << " + T;" << std::endl;
-
-  /* the constraints */
-  for ( std::vector<uint8_t> const& gt : gts )
+  set_obj_fn( lp, row);
+  
+  // Set direction
+  set_minim( lp );
+  
+  // All w and T >= 0
+  for( uint8_t i( 0 ); i <= num_vars; ++i )
   {
-    if( gt.empty() ) os << "1 ";
-    for ( uint8_t v : gt )
+    REAL row[len];
+    memset( row, 0, len * sizeof( REAL ) );
+    row[i + 1] = 1.0;
+    add_constraint(lp, row, GE, 0);
+  }
+  
+  // onSet constraints
+  for( std::vector<uint8_t> gt : gts )
+  {
+    REAL row[len];
+    memset( row, 0, len * sizeof( REAL ) );
+    for( uint8_t v : gt )
     {
-      os << "+ w" << int(v) << " ";
+      row[v + 1] = 1.0;
     }
-    os << ">= T;" << std::endl;
+    row[len - 1] = -1.0;
+    add_constraint(lp, row, GE, -REAL(gt.empty()));
   }
   
-  for ( std::vector<uint8_t> const& lt : lts )
+  // offSet constraints
+  for( std::vector<uint8_t> lt : lts )
   {
-    if( lt.empty() ) os << "0 ";
-    for ( uint8_t v : lt )
+    REAL row[len];
+    memset( row, 0, len * sizeof( REAL ) );
+    for( uint8_t v : lt )
     {
-      os << "+ w" << int(v) << " ";
+      row[v + 1] = 1.0;
     }
-    os << "<= T -1;" << std::endl;
+    row[len - 1] = -1.0;
+    add_constraint(lp, row, LE, -1.0);
   }
-
-  for ( uint8_t i( 0 ); i < num_vars; ++i )
-  {
-    os << "+ w" << int(i) << " >= 0;"<< std::endl;
-  }
-  os << "+ T >= 0;" << std::endl;
   
-  /* variable type declaration */
-  os << "integer ";
-  for ( uint8_t i( 0 ); i < num_vars; ++i )
+  // All variables are integers
+  for( uint8_t i( 0 ); i <= num_vars; ++i )
   {
-    os << " w" << int(i) << ",";
+    set_int(lp, i, TRUE);
   }
-  os << " T;" << std::endl;
-}
-
-void dump_lp( ConstraintVector const& gts, ConstraintVector const& lts,
-              uint8_t num_vars )
-{
-  std::ofstream fout( PROBLEM_FILE, std::ofstream::out );
-  print_lp( gts, lts, num_vars, fout );
-  fout.close();
-}
-
-void solve_ILP()
-{
-  const std::string directive( "lp_solve " + std::string(PROBLEM_FILE) + " > " + std::string(SOLUTION_FILE) );
-  std::system(directive.c_str());
-}
-
-void read_solution( std::vector<int64_t>& sol, uint8_t num_vars )
-{
-  std::ifstream fin( std::string(SOLUTION_FILE), std::ifstream::in );
-  if ( !fin.is_open() )
-  {
-    std::cerr << "[e] Error opening the solution file (is_threshold)." << std::endl;
-    return;
-  }
-
-  /* parsing */
-  std::string line, obj;
-  std::getline( fin, line ); /* first line is empty */
-  if( !line.empty() ) return; /* if not empty then infeasible */
-  std::getline( fin, obj ); /* second line is the value of objective function */
-  std::getline( fin, line ); /* third line is empty */
-  std::getline( fin, line ); /* fourth line is useless */
   
-  sol.resize( num_vars + 1 );
+  int res( solve( lp ) );
+  REAL variables[get_Ncolumns( lp )];
+  get_variables( lp, variables );
+  size_t n = sizeof(variables) / sizeof(variables[0]);
+  sol.insert(sol.begin(), variables, variables+n);
   
-  while ( std::getline( fin, line ) )
-  {
-    std::string var_name, value = "";
-    std::stringstream ss( line );
-    std::getline( ss, var_name, ' ' );
-    while ( value.size() == 0u && std::getline( ss, value, ' ' ) ) { }
-    
-    int int_value = std::stoi(value);
-    switch( var_name[0])
-    {
-      case 'w':
-      {
-        uint8_t var_id = std::stoi(var_name.erase( 0, 1 ));
-        sol[var_id] = int_value;
-        break;
-      }
-      case 'T':
-      {
-        sol[num_vars] = int_value;
-        break;
-      }
-      default:
-        break;
-    }
-  }
+  delete_lp( lp );
+  return res;
 }
 
 /*! \brief Threshold logic function identification
@@ -183,13 +151,9 @@ bool is_threshold( const TT& tt, std::vector<int64_t>* plf = nullptr )
   
   fillConstraints( ctt, gts, lts );
   
-  dump_lp( gts, lts, ctt.num_vars() );
+  int res = solve_lp( gts, lts, ctt.num_vars(), linear_form );
   
-  solve_ILP();
-  
-  read_solution( linear_form, ctt.num_vars() );
-  
-  if( linear_form.empty() ) return false;
+  if( res ) return false;
 
   for( uint8_t i( 0 ); i < ctt.num_vars(); i++ )
   {
@@ -200,8 +164,6 @@ bool is_threshold( const TT& tt, std::vector<int64_t>* plf = nullptr )
     }
   }
   
-  /* if tt is TF: */
-  /* push the weight and threshold values into `linear_form` */
   if ( plf )
   {
     *plf = linear_form;
