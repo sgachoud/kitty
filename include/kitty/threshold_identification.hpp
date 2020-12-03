@@ -33,7 +33,7 @@
 #pragma once
 
 #include <vector>
-#include <iostream>
+#include <array>
 #include <fstream>
 #include <cstring>
 #include <lpsolve/lp_lib.h> /* uncomment this line to include lp_solve */
@@ -48,7 +48,7 @@ namespace kitty
   typedef std::vector<std::vector<uint8_t>> ConstraintVector;
 
 int solve_lp(ConstraintVector const& gts, ConstraintVector const& lts,
-                 uint8_t num_vars, std::vector<int64_t>& sol)
+                 const uint8_t num_vars, std::vector<int64_t>& sol)
 {
   lprec *lp( make_lp( 0, num_vars + 1 ) );
   
@@ -59,13 +59,12 @@ int solve_lp(ConstraintVector const& gts, ConstraintVector const& lts,
   const size_t len = num_vars + 2;
   
   // Set objective
-  REAL row[len];
-  memset( row, 0, len * sizeof( REAL ) );
+  std::vector<REAL> row(len, 0);
   for( uint8_t i( 0 ); i <= num_vars; ++i )
   {
     row[i] = 1.0;
   }
-  set_obj_fn( lp, row);
+  set_obj_fn( lp, row.data());
   
   // Set direction
   set_minim( lp );
@@ -73,36 +72,34 @@ int solve_lp(ConstraintVector const& gts, ConstraintVector const& lts,
   // All w and T >= 0
   for( uint8_t i( 0 ); i <= num_vars; ++i )
   {
-    REAL row[len];
-    memset( row, 0, len * sizeof( REAL ) );
+    std::vector<REAL> row(len, 0);
     row[i + 1] = 1.0;
-    add_constraint(lp, row, GE, 0);
+    add_constraint(lp, row.data(), GE, 0);
   }
   
   // onSet constraints
   for( std::vector<uint8_t> gt : gts )
   {
-    REAL row[len];
-    memset( row, 0, len * sizeof( REAL ) );
+    
+    std::vector<REAL> row(len, 0);
     for( uint8_t v : gt )
     {
       row[v + 1] = 1.0;
     }
     row[len - 1] = -1.0;
-    add_constraint(lp, row, GE, -REAL(gt.empty()));
+    add_constraint(lp, row.data(), GE, -REAL(gt.empty()));
   }
   
   // offSet constraints
   for( std::vector<uint8_t> lt : lts )
   {
-    REAL row[len];
-    memset( row, 0, len * sizeof( REAL ) );
+    std::vector<REAL> row(len, 0);
     for( uint8_t v : lt )
     {
       row[v + 1] = 1.0;
     }
     row[len - 1] = -1.0;
-    add_constraint(lp, row, LE, -1.0);
+    add_constraint(lp, row.data(), LE, -1.0);
   }
   
   // All variables are integers
