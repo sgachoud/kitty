@@ -84,7 +84,7 @@ int solve_lp(ConstraintVector const& gts, ConstraintVector const& lts,
       row[v + 1] = 1.0;
     }
     row[len - 1] = -1.0;
-    add_constraint(lp, row.data(), GE, -REAL(gt.empty()));
+    add_constraint(lp, row.data(), GE, 0.0);
   }
   
   // offSet constraints
